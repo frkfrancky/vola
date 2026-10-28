@@ -30,12 +30,13 @@ export async function createSession(userId: string) {
   });
 }
 
-export async function getSessionUserId(): Promise<string | null> {
+export async function getSession(): Promise<{ userId: string; issuedAt: number } | null> {
   const token = (await cookies()).get(COOKIE_NAME)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
-    return payload.sub ?? null;
+    if (!payload.sub || !payload.iat) return null;
+    return { userId: payload.sub, issuedAt: payload.iat };
   } catch {
     return null;
   }

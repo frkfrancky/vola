@@ -37,6 +37,11 @@ export function AuthForm({ mode, next }: { mode: "login" | "register"; next?: st
             autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
         </label>
+        {mode === "login" && (
+          <Link href="/forgot-password" className="block text-right text-xs text-muted underline">
+            Mot de passe oublié ?
+          </Link>
+        )}
         {state?.error && <p className="text-sm text-danger">{state.error}</p>}
         <button className="btn-primary w-full" disabled={pending}>
           {pending ? "…" : mode === "login" ? "Se connecter" : "Créer mon compte"}

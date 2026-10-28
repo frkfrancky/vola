@@ -17,12 +17,16 @@ type Settlement = {
 
 export function BalancePanel({
   householdId,
+  periodId,
+  title,
   balances,
   members,
   settlements,
   currentUserId,
 }: {
   householdId: string;
+  periodId: string;
+  title: string;
   balances: CurrencyBalance[];
   members: Member[];
   settlements: Settlement[];
@@ -43,9 +47,9 @@ export function BalancePanel({
   const hasActivity = balances.some((b) => b.members.some((m) => m.paidCents > 0 || m.sentCents > 0));
 
   return (
-    <aside className="space-y-6">
+    <div className="space-y-6">
       <section className="card space-y-5">
-        <h2 className="font-medium">Bilan des comptes</h2>
+        <h2 className="font-medium">{title}</h2>
         {!hasActivity && <p className="text-sm text-muted">Rien à régler pour l&apos;instant.</p>}
 
         {hasActivity &&
@@ -100,7 +104,7 @@ export function BalancePanel({
                           className="mt-2 text-xs text-accent underline disabled:opacity-50"
                           onClick={() =>
                             run(() =>
-                              recordSettlement(householdId, t.fromUserId, t.toUserId, t.amountCents, b.currency),
+                              recordSettlement(householdId, periodId, t.fromUserId, t.toUserId, t.amountCents, b.currency),
                             )
                           }
                         >
@@ -135,7 +139,7 @@ export function BalancePanel({
                     disabled={pending}
                     className="text-muted hover:text-danger"
                     onClick={() => {
-                      if (confirm("Annuler ce remboursement ?")) run(() => deleteSettlement(householdId, s.id));
+                      if (confirm("Annuler ce remboursement ?")) run(() => deleteSettlement(householdId, periodId, s.id));
                     }}
                   >
                     ✕
@@ -146,6 +150,6 @@ export function BalancePanel({
           </ul>
         </section>
       )}
-    </aside>
+    </div>
   );
 }

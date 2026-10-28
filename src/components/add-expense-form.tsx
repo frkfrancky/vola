@@ -7,10 +7,14 @@ type Member = { id: string; name: string };
 
 export function AddExpenseForm({
   householdId,
+  periodId,
+  range,
   members,
   currentUserId,
 }: {
   householdId: string;
+  periodId: string;
+  range: { start: string; end: string };
   members: Member[];
   currentUserId: string;
 }) {
@@ -18,10 +22,11 @@ export function AddExpenseForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const today = new Date().toISOString().slice(0, 10);
+  const defaultDate = today < range.start ? range.start : today > range.end ? range.end : today;
 
   function submit(formData: FormData) {
     startTransition(async () => {
-      const result = await addManualExpense(householdId, formData);
+      const result = await addManualExpense(householdId, periodId, formData);
       if (result.ok) {
         setError(null);
         formRef.current?.reset();
@@ -34,10 +39,19 @@ export function AddExpenseForm({
   return (
     <form ref={formRef} action={submit} className="card space-y-3">
       <h2 className="font-medium">Ajouter une dépense</h2>
+      <p className="text-sm text-muted">Espèces, virement, achat hors Revolut…</p>
       <input name="description" required maxLength={300} placeholder="Courses, électricité…" className="input" />
       <div className="flex gap-2">
         <input name="amount" required inputMode="decimal" placeholder="Montant €" className="input" />
-        <input name="date" type="date" required defaultValue={today} className="input" />
+        <input
+          name="date"
+          type="date"
+          required
+          min={range.start}
+          max={range.end}
+          defaultValue={defaultDate}
+          className="input"
+        />
       </div>
       <fieldset className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         <legend className="mb-1 text-muted">Pour</legend>

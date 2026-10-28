@@ -33,7 +33,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             </Link>
             {user && (
               <form action={logout} className="flex items-center gap-3 text-sm">
-                <span className="text-muted">{user.name}</span>
+                <Link href="/account" className="text-muted hover:text-foreground">
+                  {user.name}
+                </Link>
                 <button className="btn-ghost py-1.5">Déconnexion</button>
               </form>
             )}

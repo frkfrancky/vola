@@ -4,12 +4,22 @@ import Papa from "papaparse";
 import { useRef, useState, useTransition } from "react";
 import { importExpenses } from "@/app/actions/expenses";
 import { formatMoney } from "@/lib/money";
+import { localDay } from "@/lib/periods";
 import { parseRevolutRows, type ParsedExpense } from "@/lib/revolut";
 
-export function ImportCsv({ householdId }: { householdId: string }) {
+export function ImportCsv({
+  householdId,
+  periodId,
+  range,
+}: {
+  householdId: string;
+  periodId: string;
+  range: { start: string; end: string };
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ParsedExpense[] | null>(null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [outOfRange, setOutOfRange] = useState(0);
   const [participants, setParticipants] = useState<"all" | "me">("all");
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -32,13 +42,25 @@ export function ImportCsv({ householdId }: { householdId: string }) {
           reset();
           return;
         }
-        if (parsed.expenses.length === 0) {
-          setMessage({ type: "error", text: "Aucune dépense trouvée dans ce fichier." });
+        // Seules les dépenses comprises dans les dates du compte sont proposées.
+        const inRange = parsed.expenses.filter((e) => {
+          const day = localDay(e.date);
+          return day >= range.start && day <= range.end;
+        });
+        if (inRange.length === 0) {
+          setMessage({
+            type: "error",
+            text:
+              parsed.expenses.length === 0
+                ? "Aucune dépense trouvée dans ce fichier."
+                : `Aucune des ${parsed.expenses.length} dépenses du fichier n'est dans les dates de ce compte.`,
+          });
           reset();
           return;
         }
-        setRows(parsed.expenses);
-        setChecked(new Set(parsed.expenses.flatMap((e, i) => (e.suggested ? [i] : []))));
+        setOutOfRange(parsed.expenses.length - inRange.length);
+        setRows(inRange);
+        setChecked(new Set(inRange.flatMap((e, i) => (e.suggested ? [i] : []))));
       },
       error: () => setMessage({ type: "error", text: "Impossible de lire ce fichier." }),
     });
@@ -59,7 +81,7 @@ export function ImportCsv({ householdId }: { householdId: string }) {
       .filter((_, i) => checked.has(i))
       .map(({ date, description, amountCents, currency }) => ({ date, description, amountCents, currency }));
     startTransition(async () => {
-      const result = await importExpenses(householdId, selected, participants);
+      const result = await importExpenses(householdId, periodId, selected, participants);
       if (result.ok) {
         setMessage({ type: "ok", text: result.message ?? "Import terminé." });
         reset();
@@ -75,7 +97,8 @@ export function ImportCsv({ householdId }: { householdId: string }) {
       {!rows && (
         <>
           <p className="text-sm text-muted">
-            Dans l&apos;app Revolut : Compte → Relevé → Excel/CSV. Les dépenses déjà importées sont ignorées.
+            Dans l&apos;app Revolut : Compte → Relevé → Excel/CSV. Seules les dépenses dans les dates du compte
+            sont gardées, et celles déjà importées sont ignorées.
           </p>
           <input
             ref={inputRef}
@@ -92,6 +115,9 @@ export function ImportCsv({ householdId }: { householdId: string }) {
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span>
               {checked.size} / {rows.length} dépenses sélectionnées
+              {outOfRange > 0 && (
+                <span className="text-muted"> · {outOfRange} hors des dates du compte, ignorées</span>
+              )}
             </span>
             <div className="flex gap-2">
               <button type="button" className="btn-ghost py-1" onClick={() => setChecked(new Set(rows.map((_, i) => i)))}>

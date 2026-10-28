@@ -3,8 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { getDb } from "@/db";
-import { households, memberships, users } from "@/db/schema";
-import { getSessionUserId } from "./session";
+import { households, memberships, periods, users } from "@/db/schema";
+import { getSession } from "./session";
 
 export type CurrentUser = { id: string; name: string; email: string };
 
@@ -15,13 +15,16 @@ export function isUuid(value: unknown): value is string {
 }
 
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
-  const userId = await getSessionUserId();
-  if (!isUuid(userId)) return null;
+  const session = await getSession();
+  if (!session || !isUuid(session.userId)) return null;
   const [user] = await getDb()
-    .select({ id: users.id, name: users.name, email: users.email })
+    .select({ id: users.id, name: users.name, email: users.email, passwordChangedAt: users.passwordChangedAt })
     .from(users)
-    .where(eq(users.id, userId));
-  return user ?? null;
+    .where(eq(users.id, session.userId));
+  if (!user) return null;
+  // Un changement de mot de passe déconnecte les autres appareils.
+  if (user.passwordChangedAt && session.issuedAt < Math.floor(user.passwordChangedAt.getTime() / 1000)) return null;
+  return { id: user.id, name: user.name, email: user.email };
 });
 
 export async function requireUser(): Promise<CurrentUser> {
@@ -35,10 +38,26 @@ export async function requireMembership(householdId: unknown) {
   const user = await requireUser();
   if (!isUuid(householdId)) notFound();
   const [row] = await getDb()
-    .select({ id: households.id, name: households.name, inviteCode: households.inviteCode })
+    .select({
+      id: households.id,
+      name: households.name,
+      inviteCode: households.inviteCode,
+    })
     .from(households)
     .innerJoin(memberships, eq(memberships.householdId, households.id))
     .where(and(eq(households.id, householdId), eq(memberships.userId, user.id)));
   if (!row) notFound();
   return { user, household: row };
+}
+
+/** Vérifie que l'utilisateur fait partie du compte partagé et que la période en fait partie. */
+export async function requirePeriod(householdId: unknown, periodId: unknown) {
+  const membership = await requireMembership(householdId);
+  if (!isUuid(periodId)) notFound();
+  const [period] = await getDb()
+    .select()
+    .from(periods)
+    .where(and(eq(periods.id, periodId), eq(periods.householdId, membership.household.id)));
+  if (!period) notFound();
+  return { ...membership, period };
 }

@@ -1,4 +1,5 @@
 import {
+  date,
   index,
   integer,
   pgTable,
@@ -14,6 +15,8 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  /** Les sessions ouvertes avant cette date sont invalidées. */
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -23,6 +26,16 @@ export const households = pgTable("households", {
   name: text("name").notNull(),
   inviteCode: text("invite_code").notNull().unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  /** Empreinte SHA-256 du jeton envoyé par e-mail. */
+  tokenHash: text("token_hash").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
 });
 
 export const memberships = pgTable(
@@ -37,6 +50,27 @@ export const memberships = pgTable(
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.householdId, t.userId] }), index("memberships_user_idx").on(t.userId)],
+);
+
+/**
+ * Un "compte" à faire sur une période : un mois, plusieurs mois, une semaine ou des
+ * dates libres. Chaque dépense et chaque remboursement appartient à un compte.
+ */
+export const periods = pgTable(
+  "periods",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    /** Dates incluses, au format AAAA-MM-JJ. */
+    startDate: date("start_date", { mode: "string" }).notNull(),
+    endDate: date("end_date", { mode: "string" }).notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("periods_household_idx").on(t.householdId, t.startDate)],
 );
 
 export const expenses = pgTable(
@@ -57,6 +91,9 @@ export const expenses = pgTable(
     source: text("source", { enum: ["revolut", "manual"] }).notNull(),
     /** Empreinte de la ligne CSV, pour ignorer les doublons à la ré-importation. */
     externalHash: text("external_hash"),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => periods.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -95,6 +132,9 @@ export const settlements = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     amountCents: integer("amount_cents").notNull(),
     currency: text("currency").notNull().default("EUR"),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => periods.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("settlements_household_idx").on(t.householdId)],
