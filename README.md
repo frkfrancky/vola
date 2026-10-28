@@ -18,7 +18,7 @@ qui doit combien à qui, avec le nombre minimal de virements.
 | Remboursement | « Marquer comme remboursé » enregistre un virement et remet le solde à jour. |
 | Période | Les comptes se font par période (semaine, mois, plusieurs mois… au choix). Clôturer une période fige ses dépenses et donne son propre bilan ; les dépenses suivantes partent dans la période en cours. La dernière période clôturée peut être rouverte. |
 
-Import Revolut : seules les sorties d'argent non annulées sont gardées. Les paiements par carte
+Import Revolut (fichier .xlsx ou .csv, montant + frais) : seules les sorties d'argent non annulées sont gardées. Les paiements par carte
 sont pré-cochés, les virements, retraits et opérations de change sont décochés. Ré-importer un
 relevé qui recoupe le précédent n'ajoute pas de doublons.
 

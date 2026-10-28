@@ -1,11 +1,10 @@
 "use client";
 
-import Papa from "papaparse";
 import { useRef, useState, useTransition } from "react";
 import { importExpenses } from "@/app/actions/expenses";
 import { formatMoney } from "@/lib/money";
 import { localDay } from "@/lib/periods";
-import { parseRevolutRows, type ParsedExpense } from "@/lib/revolut";
+import { parseRevolutRows, readStatementFile, type ParsedExpense } from "@/lib/revolut";
 
 export function ImportCsv({
   householdId,
@@ -30,40 +29,41 @@ export function ImportCsv({
     if (inputRef.current) inputRef.current.value = "";
   }
 
-  function onFile(file: File) {
+  async function onFile(file: File) {
     setMessage(null);
-    Papa.parse<Record<string, string>>(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (result) => {
-        const parsed = parseRevolutRows(result.data, result.meta.fields ?? []);
-        if (!parsed.ok) {
-          setMessage({ type: "error", text: parsed.error });
-          reset();
-          return;
-        }
-        // Seules les dépenses comprises dans les dates du compte sont proposées.
-        const inRange = parsed.expenses.filter((e) => {
-          const day = localDay(e.date);
-          return day >= range.start && day <= range.end;
-        });
-        if (inRange.length === 0) {
-          setMessage({
-            type: "error",
-            text:
-              parsed.expenses.length === 0
-                ? "Aucune dépense trouvée dans ce fichier."
-                : `Aucune des ${parsed.expenses.length} dépenses du fichier n'est dans les dates de ce compte.`,
-          });
-          reset();
-          return;
-        }
-        setOutOfRange(parsed.expenses.length - inRange.length);
-        setRows(inRange);
-        setChecked(new Set(inRange.flatMap((e, i) => (e.suggested ? [i] : []))));
-      },
-      error: () => setMessage({ type: "error", text: "Impossible de lire ce fichier." }),
+    let cells;
+    try {
+      cells = await readStatementFile(file);
+    } catch {
+      setMessage({ type: "error", text: "Impossible de lire ce fichier." });
+      reset();
+      return;
+    }
+    const parsed = parseRevolutRows(cells);
+    if (!parsed.ok) {
+      setMessage({ type: "error", text: parsed.error });
+      reset();
+      return;
+    }
+    // Seules les dépenses comprises dans les dates du compte sont proposées.
+    const inRange = parsed.expenses.filter((e) => {
+      const day = localDay(e.date);
+      return day >= range.start && day <= range.end;
     });
+    if (inRange.length === 0) {
+      setMessage({
+        type: "error",
+        text:
+          parsed.expenses.length === 0
+            ? "Aucune dépense trouvée dans ce fichier."
+            : `Aucune des ${parsed.expenses.length} dépenses du fichier n'est dans les dates de ce compte.`,
+      });
+      reset();
+      return;
+    }
+    setOutOfRange(parsed.expenses.length - inRange.length);
+    setRows(inRange);
+    setChecked(new Set(inRange.flatMap((e, i) => (e.suggested ? [i] : []))));
   }
 
   function toggle(i: number) {
@@ -97,13 +97,13 @@ export function ImportCsv({
       {!rows && (
         <>
           <p className="text-sm text-muted">
-            Dans l&apos;app Revolut : Compte → Relevé → Excel/CSV. Seules les dépenses dans les dates du compte
+            Fichier .xlsx (ou .csv) exporté depuis Revolut. Seules les dépenses dans les dates du compte
             sont gardées, et celles déjà importées sont ignorées.
           </p>
           <input
             ref={inputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".xlsx,.xls,.csv"
             onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
             className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-accent-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent"
           />
