@@ -7,6 +7,7 @@ import { BalancePanel } from "@/components/balance-panel";
 import { ExpenseList, type ExpenseItem } from "@/components/expense-list";
 import { ImportCsv } from "@/components/import-csv";
 import { PeriodSettings } from "@/components/period-forms";
+import { addTotal, StatTiles, type Totals } from "@/components/stat-tiles";
 import { requirePeriod } from "@/lib/auth";
 import { computeBalances } from "@/lib/balance";
 import { formatRange } from "@/lib/periods";
@@ -61,6 +62,21 @@ export default async function PeriodPage({ params }: PageProps<"/h/[id]/p/[perio
   );
   const range = { start: period.startDate, end: period.endDate };
 
+  const total: Totals = {};
+  for (const e of items) addTotal(total, e.currency, e.amountCents);
+  const shared: Totals = {};
+  const myShare: Totals = {};
+  const myNet: Totals = {};
+  for (const b of balances) {
+    addTotal(shared, b.currency, b.members.reduce((sum, m) => sum + m.paidCents, 0));
+    const me = b.members.find((m) => m.userId === user.id);
+    if (me) {
+      addTotal(myShare, b.currency, me.shareCents);
+      addTotal(myNet, b.currency, me.netCents);
+    }
+  }
+  const net = Object.values(myNet).reduce((a, b) => a + b, 0);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -80,6 +96,20 @@ export default async function PeriodPage({ params }: PageProps<"/h/[id]/p/[perio
           expenseCount={items.length}
         />
       </div>
+
+      <StatTiles
+        stats={[
+          { label: "Total des dépenses", totals: total, hint: `${items.length} dépense${items.length > 1 ? "s" : ""}` },
+          { label: "Dépenses partagées", totals: shared, hint: "hors dépenses perso" },
+          { label: "Ma part", totals: myShare, hint: "ce que je dois payer au total" },
+          {
+            label: "Mon solde",
+            totals: myNet,
+            signed: true,
+            hint: net > 0 ? "on me doit" : net < 0 ? "je dois" : "à l'équilibre",
+          },
+        ]}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-6">

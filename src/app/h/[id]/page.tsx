@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { expenses, expenseShares, memberships, periods, settlements, users } from "@/db/schema";
 import { CreatePeriodForm } from "@/components/period-forms";
 import { InviteBox } from "@/components/invite-box";
+import { addTotal, StatTiles, type Totals } from "@/components/stat-tiles";
 import { requireMembership } from "@/lib/auth";
 import { computeBalances } from "@/lib/balance";
 import { formatMoney } from "@/lib/money";
@@ -11,7 +12,7 @@ import { formatRange } from "@/lib/periods";
 
 export default async function HouseholdPage({ params }: PageProps<"/h/[id]">) {
   const { id } = await params;
-  const { household } = await requireMembership(id);
+  const { user, household } = await requireMembership(id);
   const db = getDb();
 
   const [members, periodRows, expenseRows, shareRows, settlementRows] = await Promise.all([
@@ -52,6 +53,10 @@ export default async function HouseholdPage({ params }: PageProps<"/h/[id]">) {
   }
 
   const memberIds = members.map((m) => m.id);
+  const sharedAll: Totals = {};
+  const paidByMe: Totals = {};
+  const myNet: Totals = {};
+  const remainingAll: Totals = {};
   const summaries = periodRows.map((period) => {
     const periodExpenses = expenseRows
       .filter((e) => e.periodId === period.id)
@@ -68,6 +73,15 @@ export default async function HouseholdPage({ params }: PageProps<"/h/[id]">) {
     const remaining = balances
       .map((b) => ({ currency: b.currency, cents: b.transfers.reduce((sum, t) => sum + t.amountCents, 0) }))
       .filter((r) => r.cents > 0);
+    for (const b of balances) {
+      const me = b.members.find((m) => m.userId === user.id);
+      addTotal(sharedAll, b.currency, b.members.reduce((sum, m) => sum + m.paidCents, 0));
+      if (me) {
+        addTotal(paidByMe, b.currency, me.paidCents);
+        addTotal(myNet, b.currency, me.netCents);
+      }
+    }
+    for (const r of remaining) addTotal(remainingAll, r.currency, r.cents);
     return { ...period, count: periodExpenses.length, sharedTotal, remaining };
   });
 
@@ -83,6 +97,31 @@ export default async function HouseholdPage({ params }: PageProps<"/h/[id]">) {
         </div>
         <InviteBox code={household.inviteCode} />
       </div>
+
+      {summaries.length > 0 && (
+        <StatTiles
+          stats={[
+            {
+              label: "Dépenses partagées",
+              totals: sharedAll,
+              hint: `sur ${summaries.length} compte${summaries.length > 1 ? "s" : ""}`,
+            },
+            { label: "Payé par moi", totals: paidByMe, hint: "pour des dépenses partagées" },
+            {
+              label: "Mon solde",
+              totals: myNet,
+              signed: true,
+              hint: Object.values(myNet).some((c) => c !== 0) ? "tous comptes confondus" : "à l'équilibre",
+            },
+            {
+              label: "Reste à régler",
+              totals: remainingAll,
+              tone: Object.keys(remainingAll).length > 0 ? "danger" : "accent",
+              hint: Object.keys(remainingAll).length > 0 ? "entre tous les colocs" : "tout est réglé ✓",
+            },
+          ]}
+        />
+      )}
 
       <CreatePeriodForm householdId={id} />
 
@@ -105,20 +144,19 @@ export default async function HouseholdPage({ params }: PageProps<"/h/[id]">) {
                     </div>
                     <StatusBadge count={period.count} remaining={period.remaining.length > 0} />
                   </div>
+                  <div className="font-mono text-2xl font-semibold tabular-nums">
+                    {period.sharedTotal.length > 0
+                      ? period.sharedTotal.map((r) => formatMoney(r.cents, r.currency)).join(" + ")
+                      : formatMoney(0)}
+                  </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">
-                      {period.count} dépense{period.count > 1 ? "s" : ""}
+                      {period.count} dépense{period.count > 1 ? "s" : ""} · partagé
                     </span>
-                    {period.remaining.length > 0 ? (
+                    {period.remaining.length > 0 && (
                       <span className="font-mono text-danger">
                         {period.remaining.map((r) => formatMoney(r.cents, r.currency)).join(" + ")} à régler
                       </span>
-                    ) : (
-                      period.sharedTotal.length > 0 && (
-                        <span className="font-mono text-muted">
-                          {period.sharedTotal.map((r) => formatMoney(r.cents, r.currency)).join(" + ")} partagés
-                        </span>
-                      )
                     )}
                   </div>
                 </Link>
